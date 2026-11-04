@@ -1,0 +1,45 @@
+# EC2 deployment of the Fleet API (routego-core). Started by start.sh, which reads the database
+# password from Secrets Manager first — there is no .env file for this service.
+# Real AWS is used here: SSM, Secrets Manager and S3 through the EC2 instance role.
+#
+# Postgres is NOT defined here: Fleet uses the Postgres container that already runs on this server
+# (ec2-postgres-1, database routego_fleet, user fleet_user). Joining that container's network is
+# what makes the host name "postgres" in the database secret resolve, and what lets the portal
+# reach this service as http://fleet:8080/ and this service reach Identity as http://identity:8080/.
+name: routego-fleet
+services:
+  # One-shot helper: applies the SQL migrations, then exits. It is not a long-running container.
+  migrate:
+    image: postgres:17
+    command: ["bash", "/deploy/apply-migrations.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: routego_fleet
+      PGUSER: fleet_user
+      PGPASSWORD: ${FLEET_DB_PASSWORD:?run start.sh, which reads it from Secrets Manager}
+    volumes:
+      - ../../migrations:/migrations:ro
+      - ./apply-migrations.sh:/deploy/apply-migrations.sh:ro
+
+  fleet:
+    image: routego/fleet:latest
+    restart: unless-stopped
+    ports:
+      - "5002:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      AWS_REGION: ap-south-1
+      # An always-on process serving concurrent requests; 10 connections is plenty on one small server.
+      DB_CONNECTION_PROFILE: ManagedInstances
+      DB_MAX_POOL_SIZE: "10"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+networks:
+  default:
+    name: ec2_default
+    external: true

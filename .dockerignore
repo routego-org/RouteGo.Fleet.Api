@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+.git/
+.agents/
+.claude/
+.env
+RouteGo.Fleet.Api.Tests/
+specs/
+infra/
+scripts/
+migrations/
+deploy/
+docker-compose.yml
+Dockerfile
